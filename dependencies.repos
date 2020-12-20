@@ -1,0 +1,29 @@
+repositories:
+  gazebo_ros_pkgs:
+    type: git
+    url: https://github.com/ros-simulation/gazebo_ros_pkgs.git
+    version: noetic-devel
+  rotors_simulator:
+    type: git
+    url: git@github.com:ethz-asl/rotors_simulator.git
+    version: master
+  # tinyxml2:
+  #   type: git
+  #   url: git@github.com:leethomason/tinyxml2.git
+  #   version: 8.0.0
+  mav_comm:
+    type: git
+    url: git@github.com:ethz-asl/mav_comm.git
+    version: 3.3.2
+  octopmap_ros:
+    type: git
+    url: git@github.com:OctoMap/octomap_ros.git
+    version: 0.4.1
+  octopmap_msgs:
+    type: git
+    url: git@github.com:OctoMap/octomap_msgs.git
+    version: 0.3.5
+  image_common:
+    type: git
+    url: https://github.com/ros-perception/image_common.git
+    version: noetic-devel

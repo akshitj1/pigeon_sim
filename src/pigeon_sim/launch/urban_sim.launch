@@ -1,0 +1,31 @@
+<launch>
+	<arg name="gazebo_gui" default="true"/>
+	<arg name="gazebo_gui_start_delay" default="5.0" />
+
+	<arg name="output" default="screen"/>
+
+	<!-- launch gazebo server(/client) with empty world. ground plane and client camera is set -->
+	<env name="GAZEBO_PLUGIN_PATH" value="/home/akshitjain/repos/pigeon_sim/install/pigeon_sim/lib"/>
+	<env name="GAZEBO_PLUGIN_PATH" value="/home/akshitjain/repos/pigeon_sim/install/rotors_gazebo_plugins/lib"/>
+	<!-- <env name="GAZEBO_MODEL_PATH" value="$(find pigeon_sim)/share"/> -->
+	<env name="GAZEBO_RESOURCE_PATH" value="/home/akshitjain/repos/pigeon_sim/install/pigeon_sim/share"/>
+	<!-- <env name="GAZEBO_MODEL_DATABASE_URI" value=""/> -->
+
+	<include file="$(find gazebo_ros)/launch/empty_world.launch">
+		<arg name="output" value="$(arg output)" />
+		<arg name="verbose" value="true"/>
+		<arg name="gui" value="false" />
+		<arg name="world_name" value="$(find pigeon_sim)/worlds/empty.world" />
+	</include>
+
+	<!-- spawn tailsitter in gazebo -->
+	<node name="tailsitter_spawner_node" pkg="pigeon_sim" type="tailsitter_spawner_node" output="$(arg output)" />
+
+	<!-- start gazebo client -->
+	<group if="$(arg gazebo_gui)">
+		<!-- gazebo client gets stuck, if delay is not introduced. -->
+		<node name="gazebo_gui" pkg="gazebo_ros" type="gzclient" launch-prefix="bash -c 'sleep $(arg gazebo_gui_start_delay); $0 $@' " respawn="false" output="$(arg output)" args="" required="false" />
+	</group>
+	
+
+</launch>
