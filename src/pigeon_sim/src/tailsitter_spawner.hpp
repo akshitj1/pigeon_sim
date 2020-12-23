@@ -1,6 +1,7 @@
 #include "gazebo_client.hpp"
 #include <tinyxml2.h>
 #include <ignition/math.hh>
+#include <cmath>
 
 namespace igmath = ignition::math;
 using std::string;
@@ -18,10 +19,12 @@ class TailsitterSpawner
 {
 private:
     const string tailsitter_name = "tailsitter";
+
     const igmath::Vector3d body_dims = igmath::Vector3d(1.0, 0.4, 0.5);
     const igmath::Vector3d body_mesh_dims = igmath::Vector3d(1000, 400, 500);
     const double body_mass = 1.6;
-    const string body_mesh_name = "pacflyer_s100_mockup";
+    const double body_mesh_scale = body_dims.X() / body_mesh_dims.X();
+    const string body_mesh_name = "tailsitter_body_wo_elevons";
 
     const double propeller_radius = 0.1, propeller_thickness = 0.005, propeller_mass = 0.005;
     const string propeller_mesh_name = "iris_prop";
@@ -31,6 +34,16 @@ private:
         body_dims.X() / 3,
         0.0,
         body_dims.Z() / 2 + 2 * propeller_thickness);
+
+    const igmath::Vector3d elevon_dims = igmath::Vector3d(body_dims.X() / 2, 0.005, 0.135);
+    const double elevon_mass = 0.01;
+    const string elevon_mesh = "elevon";
+    // body mesh and elevon mesh are at same scale
+    const double elevon_mesh_scale = body_mesh_scale;
+    const igmath::Vector3d elevon_distance = igmath::Vector3d(
+        elevon_dims.X() / 2,
+        0,
+        0.313 - body_dims.Z() / 2 + elevon_dims.Z() / 2);
 
     GazeboClient gazebo_client;
     tinyxml2::XMLDocument doc;
@@ -43,7 +56,8 @@ private:
         return pose_str.str();
     }
 
-    static const string toString(const igmath::Vector3d x)
+    template <typename T>
+    static const string toString(const igmath::Vector3<T> &x)
     {
         std::stringstream stream;
         stream << x;
@@ -83,64 +97,34 @@ private:
         return inertial;
     }
 
-    tinyxml2::XMLElement *getBody(const string name = "base")
+    tinyxml2::XMLElement *getCollision(tinyxml2::XMLElement *shape_geometry, const string &parent_name)
     {
-        auto base_link = doc.NewElement("link");
-        base_link->SetAttribute("name", (name + "_link").c_str());
-
-        // calculate inertia
-        // since static, mass and inertial is irrelevant
-        const double mass = 1.6;
-        const igmath::Vector3d principal_inertia(0.147563, 0.0458929, 0.1977);
-        base_link->InsertEndChild(getInertial(mass, principal_inertia));
-
-        // collison box
-
-        auto collision = base_link->InsertNewChildElement("collision");
-        collision->SetAttribute("name", string(base_link->Attribute("name")).append("_collision").c_str());
+        auto collision = doc.NewElement("collision");
+        collision->SetAttribute("name", (parent_name + "_collision").c_str());
         auto collision_geometry = collision->InsertNewChildElement("geometry");
-        collision_geometry->InsertNewChildElement("box")->InsertNewChildElement("size")->SetText(toString(body_dims).c_str());
+        pushChild(shape_geometry, collision_geometry);
 
         auto surface = collision->InsertNewChildElement("surface");
-        auto contact_ode = surface->InsertNewChildElement("contact")->InsertNewChildElement("ode");
-        contact_ode->InsertNewChildElement("max_vel")->SetText(10);
-        contact_ode->InsertNewChildElement("min_depth")->SetText(0.01);
+        surface->InsertNewChildElement("contact")->InsertNewChildElement("ode");
         surface->InsertNewChildElement("friction")->InsertNewChildElement("ode");
-
-        // visual mesh
-        auto visual = base_link->InsertNewChildElement("visual");
-        visual->SetAttribute("name", string(base_link->Attribute("name")).append("_visual").c_str());
-
-        visual->InsertNewChildElement("pose")->SetText(toString(igmath::Pose3d(0., 0, body_dims.Z() / 2, 0., -igmath::Angle::HalfPi.Radian(), igmath::Angle::HalfPi.Radian())).c_str());
-        // visual->InsertNewChildElement("geometry")->InsertNewChildElement("box")->InsertNewChildElement("size")->SetText(toString(igmath::Vector3d(lx, ly, lz)).c_str());
-        auto body_mesh = visual->InsertNewChildElement("geometry")->InsertNewChildElement("mesh");
-        body_mesh->InsertNewChildElement("scale")->SetText(toString(body_dims / body_mesh_dims).c_str());
-        body_mesh->InsertNewChildElement("uri")->SetText(("file://pigeon_sim/meshes/" + body_mesh_name + ".dae").c_str());
-
-        auto material = visual->InsertNewChildElement("material");
-        auto material_script = material->InsertNewChildElement("script");
-        material_script->InsertNewChildElement("uri")->SetText("file://media/materials/scripts/gazebo.material");
-        material_script->InsertNewChildElement("name")->SetText("Gazebo/DarkGrey");
-
-        base_link->InsertNewChildElement("velocity_decay");
-        return base_link;
+        return collision;
     }
 
     tinyxml2::XMLElement *getCylindricalCollision(
         const double &length,
         const double &radius, const string &parent_name)
     {
-        auto collision = doc.NewElement("collision");
-        collision->SetAttribute("name", (parent_name + "_collision").c_str());
-        auto collision_geometry = collision->InsertNewChildElement("geometry");
-        auto cylinder = collision_geometry->InsertNewChildElement("cylinder");
+        auto cylinder = doc.NewElement("cylinder");
         cylinder->InsertNewChildElement("length")->SetText(length);
         cylinder->InsertNewChildElement("radius")->SetText(radius);
+        return getCollision(cylinder, parent_name);
+    }
 
-        auto surface = collision->InsertNewChildElement("surface");
-        surface->InsertNewChildElement("contact")->InsertNewChildElement("ode");
-        surface->InsertNewChildElement("friction")->InsertNewChildElement("ode");
-        return collision;
+    tinyxml2::XMLElement *getBoxCollision(igmath::Vector3d dims, const string &parent_name)
+    {
+        auto box = doc.NewElement("box");
+        box->InsertNewChildElement("size")->SetText(toString(dims).c_str());
+        return getCollision(box, parent_name);
     }
 
     tinyxml2::XMLElement *getMeshVisual(const string &parent_name,
@@ -156,7 +140,30 @@ private:
         auto body_mesh = visual->InsertNewChildElement("geometry")->InsertNewChildElement("mesh");
         body_mesh->InsertNewChildElement("scale")->SetText(toString(scale * igmath::Vector3d::One).c_str());
         body_mesh->InsertNewChildElement("uri")->SetText(("file://pigeon_sim/meshes/" + mesh_name + ".dae").c_str());
+        visual->InsertNewChildElement("material")
+            ->InsertNewChildElement("script")
+            ->InsertNewChildElement("name")
+            ->SetText(("Gazebo/" + color).c_str());
         return visual;
+    }
+
+    tinyxml2::XMLElement *getBody(const string body_name = "base")
+    {
+        auto body_link = doc.NewElement("link");
+        body_link->SetAttribute("name", (body_name + "_link").c_str());
+
+        pushChild(
+            getInertial(body_mass, igmath::Vector3d(0.147563, 0.0458929, 0.1977)),
+            body_link);
+        pushChild(getBoxCollision(body_dims, body_name), body_link);
+        igmath::Pose3d mesh_pose(
+            0., 0, body_dims.Z() / 2,
+            0., -igmath::Angle::HalfPi.Radian(), igmath::Angle::HalfPi.Radian());
+        pushChild(
+            getMeshVisual(body_name, body_mesh_name, "Grey", body_mesh_scale, mesh_pose),
+            body_link);
+        body_link->InsertNewChildElement("velocity_decay");
+        return body_link;
     }
 
     igmath::Vector3d getPropellerPosition(const propeller_type &prop_type)
@@ -193,11 +200,45 @@ private:
 
         link->InsertEndChild(getInertial(propeller_mass, igmath::Vector3d(9.75e-7, 1.66704e-4, 1.66704e-4)));
         link->InsertEndChild(getCylindricalCollision(propeller_thickness, propeller_radius, name));
-        link->InsertEndChild(getMeshVisual(name, getPropellerMeshName(type), "DarkGrey", propeller_mesh_scale_factor));
+        link->InsertEndChild(getMeshVisual(name, getPropellerMeshName(type), "White", propeller_mesh_scale_factor));
         return link;
     }
 
-    tinyxml2::XMLElement *getRevoluteJoint(tinyxml2::XMLElement *parent, tinyxml2::XMLElement *child)
+    igmath::Vector3d boxInertia(const double &mass, const igmath::Vector3d &dim)
+    {
+        return 1 / 12. * mass * igmath::Vector3d((dim * igmath::Vector3d(0, 1, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 0, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 1, 0)).SquaredLength());
+    }
+
+    tinyxml2::XMLElement *getElevon(const int &idx, const string &body_frame)
+    {
+
+        const igmath::Vector3d pos = elevon_distance * igmath::Vector3d(std::pow(-1, idx+1), 1, -1);
+        const string name = "elevon_" + std::to_string(idx);
+        auto link = doc.NewElement("link");
+        link->SetAttribute("name", (name + "_link").c_str());
+
+        auto pose = link->InsertNewChildElement("pose");
+        pose->SetText(toString(igmath::Pose3d(pos, igmath::Quaterniond::Zero)).c_str());
+        pose->SetAttribute("frame", body_frame.c_str());
+
+        pushChild(getInertial(elevon_mass, boxInertia(elevon_mass, elevon_dims)), link);
+        pushChild(getBoxCollision(elevon_dims, name), link);
+
+        igmath::Pose3d mesh_pose(
+            0., 0., 0.,
+            igmath::Angle::Pi.Radian(), 0., 0.);
+        pushChild(getMeshVisual(name, elevon_mesh, "White", elevon_mesh_scale, mesh_pose), link);
+
+        return link;
+    }
+
+    tinyxml2::XMLElement *getRevoluteJoint(
+        tinyxml2::XMLElement *parent,
+        tinyxml2::XMLElement *child,
+        const double limit_lower = -1e16,
+        const double limit_upper = 1e16,
+        const igmath::Vector3i rotation_axis = igmath::Vector3i(0, 0, 1),
+        const igmath::Pose3d joint_pose_in_child_frame = igmath::Pose3d::Zero)
     {
         auto joint = doc.NewElement("joint");
         string joint_name = string(parent->Attribute("name")) + "_" + child->Attribute("name") + "_joint";
@@ -205,11 +246,13 @@ private:
         joint->SetAttribute("type", "revolute");
         joint->InsertNewChildElement("parent")->SetText(parent->Attribute("name"));
         joint->InsertNewChildElement("child")->SetText(child->Attribute("name"));
+        joint->InsertNewChildElement("pose")->SetText(toString(joint_pose_in_child_frame).c_str());
         auto axis = joint->InsertNewChildElement("axis");
-        axis->InsertNewChildElement("xyz")->SetText("0 0 1");
+        axis->InsertNewChildElement("xyz")->SetText(toString(rotation_axis).c_str());
         auto limit = axis->InsertNewChildElement("limit");
-        limit->InsertNewChildElement("lower")->SetText(-1e16);
-        limit->InsertNewChildElement("upper")->SetText(1e16);
+        // todo: can change this to continous and remove limits
+        limit->InsertNewChildElement("lower")->SetText(limit_lower);
+        limit->InsertNewChildElement("upper")->SetText(limit_upper);
         axis->InsertNewChildElement("use_parent_model_frame")->SetText(1);
         return joint;
     }
@@ -274,6 +317,20 @@ private:
                 prop_idx,
                 prop_orientation);
             pushChild(motor_dynamics_plugin, tailsitter_model);
+        }
+
+        for (int elevon_idx = 0; elevon_idx < 2; elevon_idx++)
+        {
+            auto elevon = getElevon(elevon_idx, body->Attribute("name"));
+            pushChild(elevon, tailsitter_model);
+            auto elevon_joint = getRevoluteJoint(
+                body,
+                elevon,
+                -igmath::Angle::Pi.Radian() / 6,
+                igmath::Angle::Pi.Radian() / 6,
+                igmath::Vector3i(1, 0, 0),
+                igmath::Pose3d(0, 0, elevon_dims.Z() / 2, 0, 0, 0));
+            pushChild(elevon_joint, tailsitter_model);
         }
 
         auto aerodynamics_plugin = getAerodynamicsPlugin(
