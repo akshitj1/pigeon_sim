@@ -9,6 +9,6 @@ source ~/repos/ros_noetic/install_isolated/setup.bash
 ## --packages-select <pkg>: build <pkg> only, skipping deps
 colcon build \
 --cmake-args "-Wno-dev -Wno-deprecated -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MESSAGE_LOG_LEVEL=STATUS" \
---packages-select pigeon_sim
+--packages-select pigeon_sim #rotors_gazebo_plugins
 # --packages-up-to 
 # --symlink-install \

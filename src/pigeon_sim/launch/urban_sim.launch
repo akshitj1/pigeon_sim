@@ -5,10 +5,11 @@
 	<arg name="output" default="screen"/>
 
 	<!-- launch gazebo server(/client) with empty world. ground plane and client camera is set -->
-	<env name="GAZEBO_PLUGIN_PATH" value="/home/akshitjain/repos/pigeon_sim/install/pigeon_sim/lib"/>
-	<env name="GAZEBO_PLUGIN_PATH" value="/home/akshitjain/repos/pigeon_sim/install/rotors_gazebo_plugins/lib"/>
-	<!-- <env name="GAZEBO_MODEL_PATH" value="$(find pigeon_sim)/share"/> -->
+	<arg name="rotors_plugins" default="/home/akshitjain/repos/pigeon_sim/install/rotors_gazebo_plugins/lib"/>
+	<arg name="pigeon_plugins" default="/home/akshitjain/repos/pigeon_sim/install/pigeon_sim/lib"/>
+	<env name="GAZEBO_PLUGIN_PATH" value="$(arg rotors_plugins):$(arg pigeon_plugins)"/>
 	<env name="GAZEBO_RESOURCE_PATH" value="/home/akshitjain/repos/pigeon_sim/install/pigeon_sim/share"/>
+	<!-- <env name="GAZEBO_MODEL_PATH" value="$(find pigeon_sim)/share"/> -->
 	<!-- <env name="GAZEBO_MODEL_DATABASE_URI" value=""/> -->
 
 	<include file="$(find gazebo_ros)/launch/empty_world.launch">

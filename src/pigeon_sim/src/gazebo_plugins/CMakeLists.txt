@@ -32,15 +32,15 @@ link_libraries(gazebo_plugin_msgs)
 
 include_directories(${Eigen3_INCLUDE_DIRS})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-add_library(rotors_gazebo_motor_model SHARED gazebo_motor_model.cpp)
-target_include_directories(rotors_gazebo_motor_model
+
+add_library(pigeon_gazebo_flat_plate_aerodynamics SHARED gazebo_flat_plate_aerodynamics.cpp)
+target_include_directories(pigeon_gazebo_flat_plate_aerodynamics
   PUBLIC
   ${catkin_INCLUDE_DIRS})
-target_link_libraries(rotors_gazebo_motor_model ${catkin_LIBRARIES} ${GAZEBO_LIBRARIES} ${Eigen3_LIBRARIES} gazebo_plugin_msgs)
-add_dependencies(rotors_gazebo_motor_model ${catkin_EXPORTED_TARGETS})
+target_link_libraries(pigeon_gazebo_flat_plate_aerodynamics ${catkin_LIBRARIES} ${GAZEBO_LIBRARIES} ${Eigen3_LIBRARIES} gazebo_plugin_msgs)
 
 install(
-  TARGETS rotors_gazebo_motor_model gazebo_plugin_msgs
+  TARGETS pigeon_gazebo_flat_plate_aerodynamics gazebo_plugin_msgs
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
   LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
 )

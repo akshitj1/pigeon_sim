@@ -5,6 +5,7 @@
             "includePath": [
                 // "${workspaceFolder}/src/**",
                 "${workspaceFolder}/install/gazebo_msgs/include/**",
+                "${workspaceFolder}/build/pigeon_sim/src/gazebo_plugins",
                 "~/repos/ros_noetic/install_isolated/include/**",
                 "/usr/include/**"
             ],

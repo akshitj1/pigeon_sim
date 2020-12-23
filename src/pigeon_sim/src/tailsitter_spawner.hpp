@@ -10,7 +10,10 @@ enum propeller_type
     CW,
     CCW
 };
-
+/**
+ * @brief wing is in x-z plane. with thrust in z. y is surface normal 
+ * 
+ */
 class TailsitterSpawner
 {
 private:
@@ -161,7 +164,8 @@ private:
         return prop_type == CCW ? propeller_distance : propeller_distance * igmath::Vector3d(-1, 1, 1);
     }
 
-    string getPropellerRotateDirection(const propeller_type &prop_type){
+    string getPropellerRotateDirection(const propeller_type &prop_type)
+    {
         return prop_type == CW ? "cw" : "ccw";
     }
 
@@ -201,7 +205,7 @@ private:
         joint->SetAttribute("type", "revolute");
         joint->InsertNewChildElement("parent")->SetText(parent->Attribute("name"));
         joint->InsertNewChildElement("child")->SetText(child->Attribute("name"));
-        auto axis=joint->InsertNewChildElement("axis");
+        auto axis = joint->InsertNewChildElement("axis");
         axis->InsertNewChildElement("xyz")->SetText("0 0 1");
         auto limit = axis->InsertNewChildElement("limit");
         limit->InsertNewChildElement("lower")->SetText(-1e16);
@@ -210,14 +214,14 @@ private:
         return joint;
     }
 
-    tinyxml2::XMLElement *getMotorPlugin(const char* motor_link_name,
-    const char* motor_joint_name,
-    const int& motor_number,
-    const propeller_type& prop_orientation,
-    const char* motor_plugin_name="librotors_gazebo_motor_model.so")
+    tinyxml2::XMLElement *getMotorPlugin(const char *motor_link_name,
+                                         const char *motor_joint_name,
+                                         const int &motor_number,
+                                         const propeller_type &prop_orientation,
+                                         const char *motor_plugin_name = "librotors_gazebo_motor_model.so")
     {
         auto plugin = doc.NewElement("plugin");
-        plugin->SetAttribute("name", "rotor_model_dynamics");
+        plugin->SetAttribute("name", ("rotor_" + std::to_string(motor_number) + "_dynamics").c_str());
         plugin->SetAttribute("filename", motor_plugin_name);
         plugin->InsertNewChildElement("robotNamespace")->SetText(tailsitter_name.c_str());
         plugin->InsertNewChildElement("linkName")->SetText(motor_link_name);
@@ -225,8 +229,25 @@ private:
         plugin->InsertNewChildElement("motorNumber")->SetText(motor_number);
         plugin->InsertNewChildElement("turningDirection")->SetText(getPropellerRotateDirection(prop_orientation).c_str());
         plugin->InsertNewChildElement("commandSubTopic")->SetText("/gazebo/command/motor_speed");
-        plugin->InsertNewChildElement("motorSpeedPubTopic")->SetText(("/motor_speed/"+std::to_string(motor_number)).c_str());
-        
+        plugin->InsertNewChildElement("motorSpeedPubTopic")->SetText(("/motor_speed/" + std::to_string(motor_number)).c_str());
+        plugin->InsertNewChildElement("motorConstant")->SetText(8e-5);
+
+        return plugin;
+    }
+
+    tinyxml2::XMLElement *getAerodynamicsPlugin(const char *body_link_name,
+                                                const double &surface_area_wet,
+                                                const char *motor_plugin_name = "libpigeon_gazebo_flat_plate_aerodynamics.so")
+    {
+        auto plugin = doc.NewElement("plugin");
+        plugin->SetAttribute("name", "flat_plate_aerodynamics");
+        plugin->SetAttribute("filename", motor_plugin_name);
+        plugin->InsertNewChildElement("lift_surface_link")->SetText(body_link_name);
+        plugin->InsertNewChildElement("surface_area_wet")->SetText(surface_area_wet);
+        plugin->InsertNewChildElement("surface_normal_axis")->SetText("y");
+        // vector from CoG to CoA in body frame
+        plugin->InsertNewChildElement("cog_coa")->SetText(toString(body_dims.Z() / 4 * igmath::Vector3d::UnitZ).c_str());
+
         return plugin;
     }
 
@@ -248,12 +269,17 @@ private:
             auto prop_joint = getRevoluteJoint(body, prop);
             pushChild(prop_joint, tailsitter_model);
             auto motor_dynamics_plugin = getMotorPlugin(
-                prop->Attribute("name"), 
+                prop->Attribute("name"),
                 prop_joint->Attribute("name"),
                 prop_idx,
                 prop_orientation);
             pushChild(motor_dynamics_plugin, tailsitter_model);
         }
+
+        auto aerodynamics_plugin = getAerodynamicsPlugin(
+            body->Attribute("name"),
+            body_dims.X() * body_dims.Z());
+        pushChild(aerodynamics_plugin, tailsitter_model);
 
         ROS_INFO_STREAM(toString(doc).c_str());
         return toString(doc).c_str();

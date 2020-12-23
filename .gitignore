@@ -9,6 +9,6 @@ src/tinyxml2
 src/gazebo_ros_pkgs
 src/mav_comm
 src/octopmap_ros
-src/rotors_simulator
+# src/rotors_simulator
 src/image_common
 src/octopmap_msgs
