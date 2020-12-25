@@ -10,5 +10,6 @@ source ~/repos/ros_noetic/install_isolated/setup.bash
 colcon build \
 --cmake-args "-Wno-dev -Wno-deprecated -DCMAKE_BUILD_TYPE=Debug -DCMAKE_MESSAGE_LOG_LEVEL=STATUS" \
 --packages-select pigeon_sim #rotors_gazebo_plugins
+# --packages-select rotors_gazebo_plugins
 # --packages-up-to 
 # --symlink-install \

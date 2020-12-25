@@ -52,7 +52,6 @@ private:
     {
         std::stringstream pose_str;
         pose_str << pose;
-        ROS_INFO("%s", pose_str.str().c_str());
         return pose_str.str();
     }
 
@@ -146,14 +145,21 @@ private:
             ->SetText(("Gazebo/" + color).c_str());
         return visual;
     }
+    igmath::Vector3d boxInertia(const double &mass, const igmath::Vector3d &dim)
+    {
+        return 1 / 12. * mass * igmath::Vector3d((dim * igmath::Vector3d(0, 1, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 0, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 1, 0)).SquaredLength());
+    }
 
     tinyxml2::XMLElement *getBody(const string body_name = "base")
     {
         auto body_link = doc.NewElement("link");
         body_link->SetAttribute("name", (body_name + "_link").c_str());
 
+        // solid mass dims is thinner than collision box
+        auto body_solid_dims = body_dims;
+        body_solid_dims.Y(0.05);
         pushChild(
-            getInertial(body_mass, igmath::Vector3d(0.147563, 0.0458929, 0.1977)),
+            getInertial(body_mass, boxInertia(body_mass, body_solid_dims)),
             body_link);
         pushChild(getBoxCollision(body_dims, body_name), body_link);
         igmath::Pose3d mesh_pose(
@@ -204,15 +210,10 @@ private:
         return link;
     }
 
-    igmath::Vector3d boxInertia(const double &mass, const igmath::Vector3d &dim)
-    {
-        return 1 / 12. * mass * igmath::Vector3d((dim * igmath::Vector3d(0, 1, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 0, 1)).SquaredLength(), (dim * igmath::Vector3d(1, 1, 0)).SquaredLength());
-    }
-
     tinyxml2::XMLElement *getElevon(const int &idx, const string &body_frame)
     {
 
-        const igmath::Vector3d pos = elevon_distance * igmath::Vector3d(std::pow(-1, idx+1), 1, -1);
+        const igmath::Vector3d pos = elevon_distance * igmath::Vector3d(std::pow(-1, idx + 1), 1, -1);
         const string name = "elevon_" + std::to_string(idx);
         auto link = doc.NewElement("link");
         link->SetAttribute("name", (name + "_link").c_str());
@@ -235,8 +236,37 @@ private:
     tinyxml2::XMLElement *getRevoluteJoint(
         tinyxml2::XMLElement *parent,
         tinyxml2::XMLElement *child,
-        const double limit_lower = -1e16,
-        const double limit_upper = 1e16,
+        const double limit_lower,
+        const double limit_upper,
+        const double initial_angle,
+        const igmath::Vector3i rotation_axis = igmath::Vector3i(0, 0, 1),
+        const igmath::Pose3d joint_pose_in_child_frame = igmath::Pose3d::Zero)
+    {
+        auto joint = doc.NewElement("joint");
+        string joint_name = string(parent->Attribute("name")) + "_" + child->Attribute("name") + "_joint";
+        joint->SetAttribute("name", joint_name.c_str());
+        joint->SetAttribute("type", "revolute");
+        joint->InsertNewChildElement("parent")->SetText(parent->Attribute("name"));
+        joint->InsertNewChildElement("child")->SetText(child->Attribute("name"));
+        joint->InsertNewChildElement("pose")->SetText(toString(joint_pose_in_child_frame).c_str());
+        auto axis = joint->InsertNewChildElement("axis");
+        // does not works for now: https://github.com/osrf/gazebo/issues/2694
+        axis->InsertNewChildElement("initial_position")->SetText(initial_angle);
+        axis->InsertNewChildElement("xyz")->SetText(toString(rotation_axis).c_str());
+        // friction set to high value to make it stay on set angle
+        axis->InsertNewChildElement("dynamics")->InsertNewChildElement("friction")->SetText(1e6);
+
+        auto limit = axis->InsertNewChildElement("limit");
+        // todo: can change this to continous and remove limits
+        limit->InsertNewChildElement("lower")->SetText(limit_lower);
+        limit->InsertNewChildElement("upper")->SetText(limit_upper);
+        axis->InsertNewChildElement("use_parent_model_frame")->SetText(1);
+        return joint;
+    }
+
+    tinyxml2::XMLElement *getContinousRevoluteJoint(
+        tinyxml2::XMLElement *parent,
+        tinyxml2::XMLElement *child,
         const igmath::Vector3i rotation_axis = igmath::Vector3i(0, 0, 1),
         const igmath::Pose3d joint_pose_in_child_frame = igmath::Pose3d::Zero)
     {
@@ -250,11 +280,17 @@ private:
         auto axis = joint->InsertNewChildElement("axis");
         axis->InsertNewChildElement("xyz")->SetText(toString(rotation_axis).c_str());
         auto limit = axis->InsertNewChildElement("limit");
+        limit->InsertNewChildElement("lower")->SetText(-1e16);
+        limit->InsertNewChildElement("upper")->SetText(1e16);
+
         // todo: can change this to continous and remove limits
-        limit->InsertNewChildElement("lower")->SetText(limit_lower);
-        limit->InsertNewChildElement("upper")->SetText(limit_upper);
         axis->InsertNewChildElement("use_parent_model_frame")->SetText(1);
         return joint;
+    }
+
+    string getPropellerDownwashTopic(const int &motor_number)
+    {
+        return "motor/" + std::to_string(motor_number) + "/downwash";
     }
 
     tinyxml2::XMLElement *getMotorPlugin(const char *motor_link_name,
@@ -272,7 +308,10 @@ private:
         plugin->InsertNewChildElement("motorNumber")->SetText(motor_number);
         plugin->InsertNewChildElement("turningDirection")->SetText(getPropellerRotateDirection(prop_orientation).c_str());
         plugin->InsertNewChildElement("commandSubTopic")->SetText("/gazebo/command/motor_speed");
-        plugin->InsertNewChildElement("motorSpeedPubTopic")->SetText(("/motor_speed/" + std::to_string(motor_number)).c_str());
+        plugin->InsertNewChildElement("motorSpeedPubTopic")->SetText(("motor_speed/" + std::to_string(motor_number)).c_str());
+        plugin->InsertNewChildElement("motorDownwashPubTopic")->SetText(getPropellerDownwashTopic(motor_number).c_str());
+        plugin->InsertNewChildElement("propellerDiameter")->SetText(2 * propeller_radius);
+
         plugin->InsertNewChildElement("motorConstant")->SetText(8e-5);
 
         return plugin;
@@ -280,8 +319,11 @@ private:
 
     tinyxml2::XMLElement *getAerodynamicsPlugin(const char *body_link_name,
                                                 const double &surface_area_wet,
+                                                const int &downwash_motor_number = -1,
+                                                const char *downwash_motor_joint = "",
                                                 const char *motor_plugin_name = "libpigeon_gazebo_flat_plate_aerodynamics.so")
     {
+        assert(surface_area_wet >= 0.);
         auto plugin = doc.NewElement("plugin");
         plugin->SetAttribute("name", "flat_plate_aerodynamics");
         plugin->SetAttribute("filename", motor_plugin_name);
@@ -290,7 +332,11 @@ private:
         plugin->InsertNewChildElement("surface_normal_axis")->SetText("y");
         // vector from CoG to CoA in body frame
         plugin->InsertNewChildElement("cog_coa")->SetText(toString(body_dims.Z() / 4 * igmath::Vector3d::UnitZ).c_str());
-
+        if (downwash_motor_number >= 0)
+        {
+            plugin->InsertNewChildElement("downwash_sub_topic")->SetText(getPropellerDownwashTopic(downwash_motor_number).c_str());
+            plugin->InsertNewChildElement("propeller_joint")->SetText(downwash_motor_joint);
+        }
         return plugin;
     }
 
@@ -306,10 +352,11 @@ private:
 
         for (int prop_idx = 0; prop_idx < 2; prop_idx++)
         {
+            // add propeller
             auto prop_orientation = prop_idx % 2 == 0 ? CW : CCW;
             auto prop = getPropeller(prop_idx, prop_orientation, body->Attribute("name"));
             pushChild(prop, tailsitter_model);
-            auto prop_joint = getRevoluteJoint(body, prop);
+            auto prop_joint = getContinousRevoluteJoint(body, prop);
             pushChild(prop_joint, tailsitter_model);
             auto motor_dynamics_plugin = getMotorPlugin(
                 prop->Attribute("name"),
@@ -317,20 +364,24 @@ private:
                 prop_idx,
                 prop_orientation);
             pushChild(motor_dynamics_plugin, tailsitter_model);
-        }
 
-        for (int elevon_idx = 0; elevon_idx < 2; elevon_idx++)
-        {
-            auto elevon = getElevon(elevon_idx, body->Attribute("name"));
+            // add elevon
+            auto elevon = getElevon(prop_idx, body->Attribute("name"));
             pushChild(elevon, tailsitter_model);
             auto elevon_joint = getRevoluteJoint(
                 body,
                 elevon,
                 -igmath::Angle::Pi.Radian() / 6,
                 igmath::Angle::Pi.Radian() / 6,
+                std::pow(-1, prop_idx) * igmath::Angle::Pi.Radian() / 7,
                 igmath::Vector3i(1, 0, 0),
                 igmath::Pose3d(0, 0, elevon_dims.Z() / 2, 0, 0, 0));
             pushChild(elevon_joint, tailsitter_model);
+
+            auto aerodynamics_plugin = getAerodynamicsPlugin(
+                elevon->Attribute("name"),
+                elevon_dims.X() * elevon_dims.Z(), prop_idx, prop_joint->Attribute("name"));
+            pushChild(aerodynamics_plugin, tailsitter_model);
         }
 
         auto aerodynamics_plugin = getAerodynamicsPlugin(
